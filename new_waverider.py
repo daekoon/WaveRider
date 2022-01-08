@@ -7,7 +7,7 @@ import time
 import traceback
 import pygame
 
-import song2 as song1
+import song1
 
 
 # Game constants
@@ -25,11 +25,15 @@ JUDGE_GOOD_TEXT = "  GOOD  "
 JUDGE_EMPTY_TEXT = "        "
 JUDGE_DIR_OFFSET_DEFAULT = 6
 
+NOTE_TYPE_DEFAULT = 0
+NOTE_TYPE_HOLD = 1
+
 MILLIS_PER_DOT = 40
 MAIN_WINDOW_MARGIN = 8
 dir_dict = {
     curses.KEY_UP: 1,
-    curses.KEY_DOWN: 2
+    curses.KEY_DOWN: 2,
+    48: 5
 }
 
 # For color printnig
@@ -50,6 +54,18 @@ def beat_success(offset):
         judge = JUDGE_GOOD
         judge_text = JUDGE_GOOD_TEXT
         health += 1
+    if health > 100:
+        health = 100
+    judge_dur = JUDGE_EXIST_DUR
+
+    score += int(100 + math.log10(streak))
+
+def hold_success():
+    global score, streak, misses, judge_dur, health
+    streak += 1
+    misses = 0
+
+    health += 0.1
     if health > 100:
         health = 100
     judge_dur = JUDGE_EXIST_DUR
@@ -123,6 +139,8 @@ def start_game():
     judge_dir_offset = JUDGE_DIR_OFFSET_DEFAULT
     beatmap_dir = 1
 
+    hold_status = 0
+
     beat_abs_pos = 0
 
     # Load beatmap
@@ -161,6 +179,9 @@ def start_game():
             elif beatmap[0][1] == 2:
                 judge_dir_offset = 0 + JUDGE_DIR_OFFSET_DEFAULT
             beat_failed()
+            if (beatmap[0][1] == 5):
+                judge_dir_offset = 0 - JUDGE_DIR_OFFSET_DEFAULT
+                beatmap.pop(0)
             beatmap.pop(0)
             
         # Exit at end of song or if dead:
@@ -170,9 +191,7 @@ def start_game():
         # Read keypress
         key = win.getch()
 
-        # Perform scoring: if key is hit and is within a certain timeframe from
-        # dot, add to the score, else deduct from it
-        if key != -1:
+        elif key != -1:
             # Exit game loop if unrecognised keys are entered
             if key not in dir_dict:
                 break
@@ -189,11 +208,17 @@ def start_game():
             
             if abs(offset) < BEAT_EPS and dir_dict[key] == beatmap_dir:
                 beat_success(offset)
-                debug = f"offset {offset}"
-                beatmap.pop(0) # delete the beat so you can't double score?
+                # debug = f"offset {offset}"
+                if beatmap_dir == 5 and hold_status == 0:
+                    hold_status = 1
+                elif beatmap_dir == 5 and hold_status == 1:
+                    
+                else:
+                    beatmap.pop(0) # delete the beat so you can't double score?      
+                
             else:
                 beat_failed()
-                debug = f"failed offset {offset}"
+                # debug = f"failed offset {offset}"
                 # debug = f"positions {beat_abs_pos}, {cur_pos}"
 
         # RENDERING LOGIC
@@ -225,7 +250,7 @@ def start_game():
         hdr.addstr(2, 3, health_text, curses.color_pair(health_color))
         hdr.addstr(2, 78, streak_text)
         hdr.addstr(2, 104, score_text)
-        # win.addstr(2, w // 2 - len(debug_text) // 2, debug_text)
+        win.addstr(2, w // 2 - len(debug_text) // 2, debug_text)
         
 
         # Draw '@'
@@ -247,8 +272,12 @@ def start_game():
             win.addch(12, i, '·')
 
         # Draw bumps
-        for beat in beatmap:
+        for i in range(0, len(beatmap)):
+            beat = beatmap[i]
             beat_pos = int((beat[0]) // MILLIS_PER_DOT) - cur_pos
+
+            if beat[1] == 6:
+                continue
             
             # Render only up till the end of the screen
             if beat_pos > w - MAIN_WINDOW_MARGIN - 1:
@@ -256,18 +285,26 @@ def start_game():
 
             if beat_pos < MAIN_WINDOW_MARGIN:
                 continue
-
-            win.addch(12, beat_pos, ' ')
-            if beat[1] == 1:
-                win.addch(12 - 4, beat_pos, '·')
-                for i in range(1, 4):
-                    win.addch(12 - i, beat_pos - 1, '·')
-                    win.addch(12 - i, beat_pos + 1, '·')
-            elif beat[1] == 2:
-                win.addch(12 + 4, beat_pos, '·')
-                for i in range(1, 4):
-                    win.addch(12 + i, beat_pos - 1, '·')
-                    win.addch(12 + i, beat_pos + 1, '·')
+            
+            if beat[1] == 1 or beat[1] == 2:
+                win.addch(12, beat_pos, ' ')
+                if beat[1] == 1:
+                    win.addch(12 - 4, beat_pos, '·')
+                    for i in range(1, 4):
+                        win.addch(12 - i, beat_pos - 1, '·')
+                        win.addch(12 - i, beat_pos + 1, '·')
+                elif beat[1] == 2:
+                    win.addch(12 + 4, beat_pos, '·')
+                    for i in range(1, 4):
+                        win.addch(12 + i, beat_pos - 1, '·')
+                        win.addch(12 + i, beat_pos + 1, '·')
+            
+            if beat[1] == 5:
+                nextbeat = beatmap[i + 1]
+                nextbeat_pos = int((nextbeat[0]) // MILLIS_PER_DOT) - cur_pos
+                for i in range(beat_pos, nextbeat_pos, 2):
+                    win.addch(12, i, '^')
+                    win.addch(12, i + 1, 'v')
 
         win.refresh()
         hdr.refresh()
